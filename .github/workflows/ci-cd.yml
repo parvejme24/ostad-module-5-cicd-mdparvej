@@ -1,12 +1,14 @@
-name: CI/CD Pipeline - Ostad Module 5
+name: CI/CD Pipeline - Ostad Module 5 (Windows Runner)
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # test এখনো ubuntu-তে করবা (যাতে consistent থাকে)
+
     steps:
       - uses: actions/checkout@v4
 
@@ -19,7 +21,7 @@ jobs:
         run: npm ci
 
       - name: Run tests and capture results
-        run: npm run check > test-results.txt 2>&1 || true
+        run: npm run check > test-results.txt 2>&1 || echo "Tests completed with issues"
 
       - name: Upload test results as artifact
         uses: actions/upload-artifact@v4
@@ -29,7 +31,7 @@ jobs:
 
   deploy:
     needs: test
-    runs-on: self-hosted # অথবা self-hosted && node-app (যদি label দিয়ে থাকেন)
+    runs-on: self-hosted # তোমার Windows runner
 
     steps:
       - uses: actions/checkout@v4
@@ -48,12 +50,28 @@ jobs:
           name: test-results
 
       - name: Display test results
-        run: cat test-results.txt
+        shell: pwsh # PowerShell ব্যবহার করবা
+        run: Get-Content test-results.txt
 
       - name: Deploy application with PM2
+        shell: pwsh
         run: |
-          npm install -g pm2
-          pm2 delete node-app || true
-          pm2 start src/server.js --name node-app
+          # PM2 গ্লোবালি ইনস্টল করা থাকলে skip করতে পারো
+          if (-not (Get-Command pm2 -ErrorAction SilentlyContinue)) {
+            Write-Output "Installing PM2 globally..."
+            npm install -g pm2
+          }
+
+          # আগের প্রসেস ডিলিট (যদি থাকে)
+          pm2 delete node-app 2>$null
+          # অথবা: pm2 delete node-app; if ($LASTEXITCODE -ne 0) { Write-Output "No previous process" }
+
+          # অ্যাপ স্টার্ট করা
+          # যদি src/server.js থাকে তাহলে
+          pm2 start "src/server.js" --name node-app
+          # অথবা যদি server.js root-এ থাকে তাহলে:
+          # pm2 start "server.js" --name node-app
+
           pm2 save
+          Write-Output "PM2 status:"
           pm2 status
